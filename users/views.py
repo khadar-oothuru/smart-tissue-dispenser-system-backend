@@ -1,27 +1,21 @@
-from rest_framework import generics
-from .serializers import RegisterSerializer
-from .models import CustomUser
+from rest_framework import generics, exceptions
 from rest_framework.permissions import AllowAny
+from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+from .models import CustomUser
+from .serializers import RegisterSerializer
 
 class RegisterView(generics.CreateAPIView):
     queryset = CustomUser.objects.all()
     serializer_class = RegisterSerializer
     permission_classes = [AllowAny]
 
-
-
-
-
-from rest_framework import exceptions
-from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import CustomUser
-
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
-        # You can add custom claims to the token here if needed
+        token['role'] = user.role
         return token
 
     def validate(self, attrs):
@@ -39,7 +33,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         if not user.check_password(password):
             raise exceptions.AuthenticationFailed("Incorrect password")
 
-        # If we get here, the user is valid, so create the token
         refresh = self.get_token(user)
         return {
             'access': str(refresh.access_token),

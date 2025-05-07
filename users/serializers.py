@@ -3,14 +3,8 @@ from .models import CustomUser
 from django.contrib.auth.password_validation import validate_password
 
 class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(
-        write_only=True, required=True, validators=[validate_password]
-    )
-
-    role = serializers.ChoiceField(
-        choices=[('user', 'User'), ('admin', 'Admin')],
-        default='user'
-    )
+    password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
+    role = serializers.ChoiceField(choices=[('user', 'User'), ('admin', 'Admin')], required=False, default='user')
 
     class Meta:
         model = CustomUser
@@ -20,7 +14,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         user = CustomUser.objects.create(
             username=validated_data['username'],
             email=validated_data['email'],
-            role=validated_data.get('role', 'user')  # fallback default
+            role=validated_data.get('role', 'user')
         )
         user.set_password(validated_data['password'])
         user.save()
