@@ -107,18 +107,38 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # }
 
 
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'bashakhadar332@gmail.com'
+EMAIL_HOST_PASSWORD = 'lqcwteflekcjdpfm' 
 
+
+
+
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': 'smart_tissue_dispenser',
+#         'USER': 'postgres',
+#         'PASSWORD': 'khadar114',
+#         'HOST': 'localhost',
+#         'PORT': '5432',
+#     }
+# }
+
+import dj_database_url  
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'smart_tissue_dispenser',
-        'USER': 'postgres',
-        'PASSWORD': 'khadar114',
-        'HOST': 'localhost',
-        'PORT': '5432',
-    }
+    'default': dj_database_url.config(
+        default='postgres://postgres:khadar114@localhost:5432/smart_tissue_dispenser'
+    )
 }
+
+
+STATIC_ROOT = BASE_DIR / "staticfiles_build" / "static"
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
