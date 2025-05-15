@@ -114,6 +114,6 @@ AUTH_USER_MODEL = 'users.CustomUser'
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles_build' / 'static'
-STATICFILES_DIRS = [BASE_DIR / 'static']
+# STATICFILES_DIRS = [BASE_DIR / 'static']
 
 
