@@ -67,6 +67,11 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
 # ------------------ Forgot Password ------------------
+
+
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
+
 class ForgotPasswordView(APIView):
     permission_classes = [AllowAny]
 
@@ -79,11 +84,19 @@ class ForgotPasswordView(APIView):
             reset_path = reverse('reset-password', args=[uid, token])
             reset_url = f"{request.scheme}://{request.get_host()}{reset_path}"
 
+            # Render custom email HTML template
+            html_message = render_to_string('emails/password_reset_email.html', {
+                'user': user,
+                'reset_url': reset_url,
+            })
+
+            # Send email with HTML content
             send_mail(
-                subject='Password Reset Request',
-                message=f"Hi {user.username},\n\nClick the link below to reset your password:\n{reset_url}",
+                subject='🔒 Reset Your Password',
+                message=f"Hi {user.username}, use the link below to reset your password.",  # fallback plain text
                 from_email='your_email@gmail.com',
                 recipient_list=[email],
+                html_message=html_message,
                 fail_silently=False,
             )
 
@@ -92,29 +105,7 @@ class ForgotPasswordView(APIView):
         except User.DoesNotExist:
             return Response({'error': 'No account found with this email address.'}, status=status.HTTP_404_NOT_FOUND)
 
-# # ------------------ Reset Password ------------------
-# class ResetPasswordView(APIView):
-#     permission_classes = [AllowAny]
 
-#     def post(self, request, uidb64, token):
-#         try:
-#             uid = force_str(urlsafe_base64_decode(uidb64))
-#             user = User.objects.get(pk=uid)
-
-#             if not token_generator.check_token(user, token):
-#                 return Response({'error': 'Invalid or expired password reset token.'}, status=status.HTTP_400_BAD_REQUEST)
-
-#             new_password = request.data.get('password')
-#             if not new_password:
-#                 return Response({'error': 'New password is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-#             user.set_password(new_password)
-#             user.save()
-
-#             return Response({'message': 'Password has been reset successfully.'}, status=status.HTTP_200_OK)
-
-#         except Exception as e:
-#             return Response({'error': 'Something went wrong. Please try again.'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 from django.views import View
