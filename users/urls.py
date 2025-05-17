@@ -5,7 +5,7 @@ from .views import (
     UserDetailView,
     ForgotPasswordView,
     ResetPasswordView,
-    GoogleLoginView,
+    # GoogleLoginView,
     CustomTokenObtainPairView,
 )
 
@@ -16,5 +16,5 @@ urlpatterns = [
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('forgot/', ForgotPasswordView.as_view(), name='forgot-password'),
     path('reset/<uidb64>/<token>/', ResetPasswordView.as_view(), name='reset-password'),
-    path('google-login/', GoogleLoginView.as_view(), name='google-login'),
+    # path('google-login/', GoogleLoginView.as_view(), name='google-login'),
 ]

@@ -179,60 +179,60 @@ class ResetPasswordView(View):
 #             return Response({"error": "Invalid token"}, status=400)
 
 
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from google.oauth2 import id_token
-from google.auth.transport import requests
-from django.contrib.auth import get_user_model
-from rest_framework_simplejwt.tokens import RefreshToken
-from django.conf import settings
+# from rest_framework.views import APIView
+# from rest_framework.response import Response
+# from rest_framework import status
+# from google.oauth2 import id_token
+# from google.auth.transport import requests
+# from django.contrib.auth import get_user_model
+# from rest_framework_simplejwt.tokens import RefreshToken
+# from django.conf import settings
 
-User = get_user_model()
+# User = get_user_model()
 
-class GoogleLoginAPIView(APIView):
-    def post(self, request):
-        token = request.data.get("id_token")
-        if not token:
-            return Response({"error": "Token is required"}, status=status.HTTP_400_BAD_REQUEST)
+# class GoogleLoginAPIView(APIView):
+#     def post(self, request):
+#         token = request.data.get("id_token")
+#         if not token:
+#             return Response({"error": "Token is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            # Verify token using Google
-            idinfo = id_token.verify_oauth2_token(
-                token, requests.Request(), settings.GOOGLE_WEB_CLIENT_ID
-            )
+#         try:
+#             # Verify token using Google
+#             idinfo = id_token.verify_oauth2_token(
+#                 token, requests.Request(), settings.GOOGLE_WEB_CLIENT_ID
+#             )
 
-            # Extract user info
-            email = idinfo["email"]
-            name = idinfo.get("name", email.split("@")[0])
-            picture = idinfo.get("picture")
+#             # Extract user info
+#             email = idinfo["email"]
+#             name = idinfo.get("name", email.split("@")[0])
+#             picture = idinfo.get("picture")
 
-            # Get or create user
-            user, created = User.objects.get_or_create(email=email, defaults={"username": name})
-            if created and picture:
-                user.profile_picture = picture
-                user.save()
+#             # Get or create user
+#             user, created = User.objects.get_or_create(email=email, defaults={"username": name})
+#             if created and picture:
+#                 user.profile_picture = picture
+#                 user.save()
 
-            # Generate JWT tokens
-            refresh = RefreshToken.for_user(user)
+#             # Generate JWT tokens
+#             refresh = RefreshToken.for_user(user)
 
-            return Response({
-                "access": str(refresh.access_token),
-                "refresh": str(refresh),
-                "user": {
-                    "username": user.username,
-                    "email": user.email,
-                    "role": user.role,
-                }
-            })
+#             return Response({
+#                 "access": str(refresh.access_token),
+#                 "refresh": str(refresh),
+#                 "user": {
+#                     "username": user.username,
+#                     "email": user.email,
+#                     "role": user.role,
+#                 }
+#             })
 
-        except ValueError:
-            return Response({"error": "Invalid token"}, status=status.HTTP_400_BAD_REQUEST)
+#         except ValueError:
+#             return Response({"error": "Invalid token"}, status=status.HTTP_400_BAD_REQUEST)
 
 
-from rest_framework.views import APIView
-from rest_framework.response import Response
+# from rest_framework.views import APIView
+# from rest_framework.response import Response
 
-class GoogleLoginView(APIView):
-    def post(self, request):
-        return Response({'message': 'Google login successful'})
+# class GoogleLoginView(APIView):
+#     def post(self, request):
+#         return Response({'message': 'Google login successful'})
