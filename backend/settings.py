@@ -3,8 +3,12 @@ from datetime import timedelta
 import os
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
 load_dotenv()
+
+
+
+
+GOOGLE_WEB_CLIENT_ID = os.getenv("GOOGLE_WEB_CLIENT_ID")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 

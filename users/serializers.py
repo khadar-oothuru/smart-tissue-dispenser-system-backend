@@ -1,31 +1,36 @@
 from rest_framework import serializers
-from .models import CustomUser
 from django.contrib.auth.password_validation import validate_password
+from .models import CustomUser
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
-    role = serializers.ChoiceField(choices=[('user', 'User'), ('admin', 'Admin')], required=False, default='user')
+    profile_picture = serializers.ImageField(required=False, allow_null=True)
+    role = serializers.ChoiceField(choices=[('user', 'User'), ('admin', 'Admin')], default='user', required=False)
 
     class Meta:
         model = CustomUser
-        fields = ('username', 'password', 'email', 'role')
+        fields = ('username', 'email', 'password', 'role', 'profile_picture')
 
-    def create(self, validated_data):
-        user = CustomUser.objects.create(
-            username=validated_data['username'],
-            email=validated_data['email'],
-            role=validated_data.get('role', 'user')
-        )
-        user.set_password(validated_data['password'])
+    def validate_email(self, value):
+        if CustomUser.objects.filter(email=value).exists():
+            raise serializers.ValidationError("A user with this email already exists.")
+        return value
+
+def create(self, validated_data):
+    profile_picture = validated_data.pop('profile_picture', None)
+    role = validated_data.get('role', 'user')
+    user = CustomUser.objects.create_user(
+        username=validated_data['username'],
+        email=validated_data['email'],
+        password=validated_data['password'],
+        role=role
+    )
+    if profile_picture:
+        user.profile_picture = profile_picture
         user.save()
-        return user
-
-
-
-from rest_framework import serializers
-from .models import CustomUser
+    return user
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields = ['id', 'email', 'username', 'role']
+        fields = ['id', 'email', 'username', 'role', 'profile_picture']
