@@ -168,68 +168,68 @@ class ResetPasswordView(View):
         except Exception:
             return render(request, 'reset_password_form.html', {'error': 'Something went wrong. Please try again.'})
 
-# Google OAuth Login View
-class GoogleLoginAPIView(APIView):
-    permission_classes = [AllowAny]
+# # Google OAuth Login View
+# class GoogleLoginAPIView(APIView):
+#     permission_classes = [AllowAny]
 
-    @swagger_auto_schema(
-        operation_description="Login or register user via Google OAuth2 id_token",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            required=['id_token'],
-            properties={
-                'id_token': openapi.Schema(type=openapi.TYPE_STRING, description='Google OAuth2 ID token')
-            }
-        ),
-        responses={
-            200: openapi.Schema(
-                type=openapi.TYPE_OBJECT,
-                properties={
-                    'access': openapi.Schema(type=openapi.TYPE_STRING, description='Access token'),
-                    'refresh': openapi.Schema(type=openapi.TYPE_STRING, description='Refresh token'),
-                    'user': openapi.Schema(
-                        type=openapi.TYPE_OBJECT,
-                        properties={
-                            'username': openapi.Schema(type=openapi.TYPE_STRING),
-                            'email': openapi.Schema(type=openapi.TYPE_STRING, format='email'),
-                            'role': openapi.Schema(type=openapi.TYPE_STRING),
-                        }
-                    )
-                }
-            ),
-            400: 'Invalid token or Bad Request'
-        }
-    )
-    def post(self, request):
-        token = request.data.get("id_token")
-        if not token:
-            return Response({"error": "id_token is required"}, status=status.HTTP_400_BAD_REQUEST)
+#     @swagger_auto_schema(
+#         operation_description="Login or register user via Google OAuth2 id_token",
+#         request_body=openapi.Schema(
+#             type=openapi.TYPE_OBJECT,
+#             required=['id_token'],
+#             properties={
+#                 'id_token': openapi.Schema(type=openapi.TYPE_STRING, description='Google OAuth2 ID token')
+#             }
+#         ),
+#         responses={
+#             200: openapi.Schema(
+#                 type=openapi.TYPE_OBJECT,
+#                 properties={
+#                     'access': openapi.Schema(type=openapi.TYPE_STRING, description='Access token'),
+#                     'refresh': openapi.Schema(type=openapi.TYPE_STRING, description='Refresh token'),
+#                     'user': openapi.Schema(
+#                         type=openapi.TYPE_OBJECT,
+#                         properties={
+#                             'username': openapi.Schema(type=openapi.TYPE_STRING),
+#                             'email': openapi.Schema(type=openapi.TYPE_STRING, format='email'),
+#                             'role': openapi.Schema(type=openapi.TYPE_STRING),
+#                         }
+#                     )
+#                 }
+#             ),
+#             400: 'Invalid token or Bad Request'
+#         }
+#     )
+#     def post(self, request):
+#         token = request.data.get("id_token")
+#         if not token:
+#             return Response({"error": "id_token is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            idinfo = id_token.verify_oauth2_token(
-                token, google_requests.Request(), settings.GOOGLE_WEB_CLIENT_ID
-            )
+#         try:
+#             idinfo = id_token.verify_oauth2_token(
+#                 token, google_requests.Request(), settings.GOOGLE_WEB_CLIENT_ID
+#             )
 
-            email = idinfo["email"]
-            name = idinfo.get("name", email.split("@")[0])
-            picture = idinfo.get("picture")
+#             email = idinfo["email"]
+#             name = idinfo.get("name", email.split("@")[0])
+#             picture = idinfo.get("picture")
 
-            user, created = User.objects.get_or_create(email=email, defaults={"username": name})
-            if created and picture:
-                user.profile_picture = picture
-                user.save()
+#             user, created = User.objects.get_or_create(email=email, defaults={"username": name})
+#             if created and picture:
+#                 user.profile_picture = picture
+#                 user.save()
 
-            refresh = RefreshToken.for_user(user)
+#             refresh = RefreshToken.for_user(user)
 
-            return Response({
-                "access": str(refresh.access_token),
-                "refresh": str(refresh),
-                "user": {
-                    "username": user.username,
-                    "email": user.email,
-                    "role": getattr(user, 'role', 'user'),  # fallback if role not set
-                }
-            })
+#             return Response({
+#                 "access": str(refresh.access_token),
+#                 "refresh": str(refresh),
+#                 "user": {
+#                     "username": user.username,
+#                     "email": user.email,
+#                     "role": getattr(user, 'role', 'user'),  # fallback if role not set
+#                 }
+#             })
 
-        except ValueError:
-            return Response({"error": "Invalid token"}, status=status.HTTP_400_BAD_REQUEST)
+#         except ValueError:
+#             return Response({"error": "Invalid token"}, status=status.HTTP_400_BAD_REQUEST)
