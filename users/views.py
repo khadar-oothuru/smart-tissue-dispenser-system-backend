@@ -15,7 +15,7 @@ from django.urls import reverse
 from django.views import View
 from django.shortcuts import render
 from google.oauth2 import id_token
-from google.auth.transport import requests as google_requests
+# from google.auth.transport import requests as google_requests
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.conf import settings
 
