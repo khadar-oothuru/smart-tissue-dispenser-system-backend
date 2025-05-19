@@ -1,9 +1,10 @@
-from rest_framework import generics, exceptions, status
+from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.core.mail import send_mail
@@ -13,9 +14,13 @@ from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.urls import reverse
 from django.views import View
 from django.shortcuts import render
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.conf import settings
 
 from .models import CustomUser
-from .serializers import RegisterSerializer, UserSerializer
+from .serializers import RegisterSerializer, UserSerializer, CustomTokenObtainPairSerializer
 
 User = get_user_model()
 token_generator = PasswordResetTokenGenerator()
@@ -26,50 +31,64 @@ class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = [AllowAny]
 
+    @swagger_auto_schema(
+        operation_description="Register a new user",
+        request_body=RegisterSerializer,
+        responses={201: RegisterSerializer, 400: 'Validation Error'}
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+
 # Get authenticated user details
 class UserDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @swagger_auto_schema(
+        operation_description="Get details of authenticated user",
+        responses={200: UserSerializer()}
+    )
     def get(self, request):
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
 
 # Custom JWT login with email
-class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    @classmethod
-    def get_token(cls, user):
-        token = super().get_token(user)
-        token['role'] = user.role
-        return token
-
-    def validate(self, attrs):
-        email = attrs.get('email')
-        password = attrs.get('password')
-
-        if not email or not password:
-            raise exceptions.AuthenticationFailed("Both email and password are required.")
-
-        try:
-            user = CustomUser.objects.get(email=email)
-        except CustomUser.DoesNotExist:
-            raise exceptions.AuthenticationFailed("User with this email does not exist.")
-
-        if not user.check_password(password):
-            raise exceptions.AuthenticationFailed("Incorrect password.")
-
-        refresh = self.get_token(user)
-        return {
-            'access': str(refresh.access_token),
-            'refresh': str(refresh),
-        }
-
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+
+    @swagger_auto_schema(
+        operation_description="Login and get JWT token pair",
+        request_body=CustomTokenObtainPairSerializer,
+        responses={
+            200: openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'refresh': openapi.Schema(type=openapi.TYPE_STRING, description='Refresh token'),
+                    'access': openapi.Schema(type=openapi.TYPE_STRING, description='Access token'),
+                }
+            ),
+            400: 'Validation Error',
+            401: 'Authentication Failed'
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
 
 # Forgot Password View
 class ForgotPasswordView(APIView):
     permission_classes = [AllowAny]
 
+    @swagger_auto_schema(
+        operation_description="Send password reset link to email",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['email'],
+            properties={'email': openapi.Schema(type=openapi.TYPE_STRING, format='email')}
+        ),
+        responses={
+            200: openapi.Response('Password reset email sent'),
+            404: 'Email not found'
+        }
+    )
     def post(self, request):
         email = request.data.get('email')
         try:
@@ -87,7 +106,7 @@ class ForgotPasswordView(APIView):
             send_mail(
                 subject='🔒 Reset Your Password',
                 message=f"Hi {user.username}, use the link below to reset your password.",
-                from_email='your_email@gmail.com',
+                from_email='your_email@gmail.com',  # update with your sender email
                 recipient_list=[email],
                 html_message=html_message,
                 fail_silently=False,
@@ -100,12 +119,36 @@ class ForgotPasswordView(APIView):
 
 # Reset Password View (HTML form rendering)
 class ResetPasswordView(View):
+    @swagger_auto_schema(
+        operation_description="Render password reset form",
+        manual_parameters=[
+            openapi.Parameter('uidb64', openapi.IN_PATH, type=openapi.TYPE_STRING),
+            openapi.Parameter('token', openapi.IN_PATH, type=openapi.TYPE_STRING)
+        ],
+        responses={200: 'Password reset form'}
+    )
     def get(self, request, uidb64, token):
         return render(request, 'reset_password_form.html', {
             'uidb64': uidb64,
             'token': token,
         })
 
+    @swagger_auto_schema(
+        operation_description="Submit new password for reset",
+        manual_parameters=[
+            openapi.Parameter('uidb64', openapi.IN_PATH, type=openapi.TYPE_STRING),
+            openapi.Parameter('token', openapi.IN_PATH, type=openapi.TYPE_STRING)
+        ],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['password'],
+            properties={'password': openapi.Schema(type=openapi.TYPE_STRING, description='New password')}
+        ),
+        responses={
+            200: 'Password reset success page',
+            400: 'Error page'
+        }
+    )
     def post(self, request, uidb64, token):
         try:
             uid = force_str(urlsafe_base64_decode(uidb64))
@@ -126,113 +169,67 @@ class ResetPasswordView(View):
             return render(request, 'reset_password_form.html', {'error': 'Something went wrong. Please try again.'})
 
 # Google OAuth Login View
+class GoogleLoginAPIView(APIView):
+    permission_classes = [AllowAny]
 
+    @swagger_auto_schema(
+        operation_description="Login or register user via Google OAuth2 id_token",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['id_token'],
+            properties={
+                'id_token': openapi.Schema(type=openapi.TYPE_STRING, description='Google OAuth2 ID token')
+            }
+        ),
+        responses={
+            200: openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'access': openapi.Schema(type=openapi.TYPE_STRING, description='Access token'),
+                    'refresh': openapi.Schema(type=openapi.TYPE_STRING, description='Refresh token'),
+                    'user': openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'username': openapi.Schema(type=openapi.TYPE_STRING),
+                            'email': openapi.Schema(type=openapi.TYPE_STRING, format='email'),
+                            'role': openapi.Schema(type=openapi.TYPE_STRING),
+                        }
+                    )
+                }
+            ),
+            400: 'Invalid token or Bad Request'
+        }
+    )
+    def post(self, request):
+        token = request.data.get("id_token")
+        if not token:
+            return Response({"error": "id_token is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-# from google.oauth2 import id_token
-# from google.auth.transport import requests
-# from rest_framework_simplejwt.tokens import RefreshToken
-# from rest_framework.permissions import AllowAny
-# from rest_framework.views import APIView
+        try:
+            idinfo = id_token.verify_oauth2_token(
+                token, google_requests.Request(), settings.GOOGLE_WEB_CLIENT_ID
+            )
 
-# class GoogleLoginView(APIView):
-#     permission_classes = [AllowAny]
+            email = idinfo["email"]
+            name = idinfo.get("name", email.split("@")[0])
+            picture = idinfo.get("picture")
 
-#     def post(self, request):
-#         token = request.data.get('id_token')
-#         if not token:
-#             return Response({"error": "No id_token provided."}, status=400)
+            user, created = User.objects.get_or_create(email=email, defaults={"username": name})
+            if created and picture:
+                user.profile_picture = picture
+                user.save()
 
-#         try:
-#             idinfo = id_token.verify_oauth2_token(token, requests.Request(), 'YOUR_GOOGLE_CLIENT_ID')
+            refresh = RefreshToken.for_user(user)
 
-#             email = idinfo['email']
-#             username = idinfo.get('name', email.split('@')[0])
-#             picture = idinfo.get('picture')
+            return Response({
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "user": {
+                    "username": user.username,
+                    "email": user.email,
+                    "role": getattr(user, 'role', 'user'),  # fallback if role not set
+                }
+            })
 
-#             user, created = User.objects.get_or_create(email=email, defaults={
-#                 'username': username,
-#                 'role': 'user',
-#                 'profile_picture': picture or None,
-#             })
-
-#             if not user.username:
-#                 user.username = username
-#             if picture and user.profile_picture != picture:
-#                 user.profile_picture = picture
-#             user.save()
-
-#             refresh = RefreshToken.for_user(user)
-
-#             return Response({
-#                 'refresh': str(refresh),
-#                 'access': str(refresh.access_token),
-#                 'user': {
-#                     'id': user.id,
-#                     'email': user.email,
-#                     'username': user.username,
-#                     'role': user.role,
-#                     'profile_picture': user.profile_picture,
-#                 }
-#             })
-
-#         except ValueError:
-#             return Response({"error": "Invalid token"}, status=400)
-
-
-# from rest_framework.views import APIView
-# from rest_framework.response import Response
-# from rest_framework import status
-# from google.oauth2 import id_token
-# from google.auth.transport import requests
-# from django.contrib.auth import get_user_model
-# from rest_framework_simplejwt.tokens import RefreshToken
-# from django.conf import settings
-
-# User = get_user_model()
-
-# class GoogleLoginAPIView(APIView):
-#     def post(self, request):
-#         token = request.data.get("id_token")
-#         if not token:
-#             return Response({"error": "Token is required"}, status=status.HTTP_400_BAD_REQUEST)
-
-#         try:
-#             # Verify token using Google
-#             idinfo = id_token.verify_oauth2_token(
-#                 token, requests.Request(), settings.GOOGLE_WEB_CLIENT_ID
-#             )
-
-#             # Extract user info
-#             email = idinfo["email"]
-#             name = idinfo.get("name", email.split("@")[0])
-#             picture = idinfo.get("picture")
-
-#             # Get or create user
-#             user, created = User.objects.get_or_create(email=email, defaults={"username": name})
-#             if created and picture:
-#                 user.profile_picture = picture
-#                 user.save()
-
-#             # Generate JWT tokens
-#             refresh = RefreshToken.for_user(user)
-
-#             return Response({
-#                 "access": str(refresh.access_token),
-#                 "refresh": str(refresh),
-#                 "user": {
-#                     "username": user.username,
-#                     "email": user.email,
-#                     "role": user.role,
-#                 }
-#             })
-
-#         except ValueError:
-#             return Response({"error": "Invalid token"}, status=status.HTTP_400_BAD_REQUEST)
-
-
-# from rest_framework.views import APIView
-# from rest_framework.response import Response
-
-# class GoogleLoginView(APIView):
-#     def post(self, request):
-#         return Response({'message': 'Google login successful'})
+        except ValueError:
+            return Response({"error": "Invalid token"}, status=status.HTTP_400_BAD_REQUEST)

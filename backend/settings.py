@@ -28,7 +28,11 @@ INSTALLED_APPS = [
     'rest_framework',
     'users',
     'core',
+    'device',
     'corsheaders',
+    'channels',
+    'drf_yasg',
+
 ]
 
 CORS_ALLOW_ALL_ORIGINS = True
@@ -37,7 +41,14 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    ),
 }
+
+
+
+
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
@@ -113,6 +124,8 @@ USE_TZ = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'users.CustomUser'
+# DeviceData = 'device.DeviceData'
+
 
 
 
@@ -121,3 +134,14 @@ STATIC_ROOT = BASE_DIR / 'staticfiles_build' / 'static'
 # STATICFILES_DIRS = [BASE_DIR / 'static']
 
 
+
+ASGI_APPLICATION = 'backend.asgi.application'  # Replace with your project name
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [os.getenv("REDIS_URL")],
+        },
+    },
+}
