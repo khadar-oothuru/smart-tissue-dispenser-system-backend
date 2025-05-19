@@ -81,6 +81,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'backend.wsgi.app'
+ASGI_APPLICATION = 'backend.asgi.application'  # Replace with your project name
 # WSGI_APPLICATION = 'api.wsgi.app'
 
 DATABASES = {
