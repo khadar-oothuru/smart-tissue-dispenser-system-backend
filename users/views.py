@@ -14,7 +14,7 @@ from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.urls import reverse
 from django.views import View
 from django.shortcuts import render
-from google.oauth2 import id_token
+# from google.oauth2 import id_token
 # from google.auth.transport import requests as google_requests
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.conf import settings
@@ -62,8 +62,9 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             200: openapi.Schema(
                 type=openapi.TYPE_OBJECT,
                 properties={
-                    'refresh': openapi.Schema(type=openapi.TYPE_STRING, description='Refresh token'),
+                    
                     'access': openapi.Schema(type=openapi.TYPE_STRING, description='Access token'),
+                    'refresh': openapi.Schema(type=openapi.TYPE_STRING, description='Refresh token'),
                 }
             ),
             400: 'Validation Error',
@@ -118,6 +119,10 @@ class ForgotPasswordView(APIView):
             return Response({'error': 'No account found with this email address.'}, status=status.HTTP_404_NOT_FOUND)
 
 # Reset Password View (HTML form rendering)
+
+from django.views.decorators.csrf import csrf_protect
+from django.utils.decorators import method_decorator
+@method_decorator(csrf_protect, name='dispatch')
 class ResetPasswordView(View):
     @swagger_auto_schema(
         operation_description="Render password reset form",
@@ -233,3 +238,23 @@ class ResetPasswordView(View):
 
 #         except ValueError:
 #             return Response({"error": "Invalid token"}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
+from .permissions import IsCustomAdmin
+
+@api_view(['GET'])
+@permission_classes([IsCustomAdmin])
+def test_admin_permission(request):
+    user = request.user
+    return Response({
+        "username": user.username,
+        "email": user.email,
+        "role": user.role,
+        "is_staff": user.is_staff,
+        "is_superuser": user.is_superuser,
+        "authenticated": user.is_authenticated,
+    })

@@ -7,6 +7,7 @@ from .views import (
     ResetPasswordView,
     # GoogleLoginView,
     CustomTokenObtainPairView,
+    test_admin_permission,
 )
 
 urlpatterns = [
@@ -17,4 +18,5 @@ urlpatterns = [
     path('forgot/', ForgotPasswordView.as_view(), name='forgot-password'),
     path('reset/<uidb64>/<token>/', ResetPasswordView.as_view(), name='reset-password'),
     # path('google-login/', GoogleLoginView.as_view(), name='google-login'),
+    path('test-admin/', test_admin_permission, name='test-admin'),
 ]

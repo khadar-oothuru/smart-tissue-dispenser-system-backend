@@ -37,6 +37,22 @@ class UserSerializer(serializers.ModelSerializer):
 
 # Placeholder for your custom token serializer, implement as needed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    # override methods here if needed, otherwise just inherit as is
-    pass
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        data['user'] = {
+            'id': self.user.id,
+            'username': self.user.username,
+            'email': self.user.email,
+            'role': self.user.role,
+            'profile_picture': self.user.profile_picture,
+        }
+        return data
+
+
+def validate_username(self, value):
+    if CustomUser.objects.filter(username=value).exists():
+        raise serializers.ValidationError("A user with this username already exists.")
+    return value

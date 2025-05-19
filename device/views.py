@@ -1,11 +1,12 @@
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAdminUser, IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
 from .models import Device, DeviceData, Notification
 from .serializers import DeviceSerializer, DeviceDataSerializer, NotificationSerializer
+from .permissions import IsCustomAdmin  # import custom permission
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -21,7 +22,7 @@ from channels.layers import get_channel_layer
     operation_description="Add a new device (Admin only)"
 )
 @api_view(['POST'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsCustomAdmin])  # <- updated here
 def add_device(request):
     serializer = DeviceSerializer(data=request.data)
     if serializer.is_valid():
@@ -206,3 +207,4 @@ def device_analytics(request):
         })
 
     return Response(analytics)
+
