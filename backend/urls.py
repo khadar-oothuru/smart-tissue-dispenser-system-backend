@@ -20,7 +20,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('users.urls')),
     path('api/device/', include('device.urls')),
-     path('accounts/', include('django.contrib.auth.urls')),
+    
     path('', include('core.urls')),
 
     # Swagger & Redoc Documentation

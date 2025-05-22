@@ -277,6 +277,8 @@ USE_TZ = True
 # Static (used for admin site)
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles_build' / 'static'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 
 # Channels (WebSocket support)
 CHANNEL_LAYERS = {
