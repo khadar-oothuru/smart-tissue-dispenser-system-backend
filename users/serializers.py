@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from .models import CustomUser
+import cloudinary
+import cloudinary.uploader
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
@@ -14,6 +16,11 @@ class RegisterSerializer(serializers.ModelSerializer):
     def validate_email(self, value):
         if CustomUser.objects.filter(email=value).exists():
             raise serializers.ValidationError("A user with this email already exists.")
+        return value
+
+    def validate_username(self, value):
+        if CustomUser.objects.filter(username=value).exists():
+            raise serializers.ValidationError("A user with this username already exists.")
         return value
 
     def create(self, validated_data):
@@ -35,8 +42,19 @@ class UserSerializer(serializers.ModelSerializer):
         model = CustomUser
         fields = ['id', 'email', 'username', 'role', 'profile_picture']
 
-# Placeholder for your custom token serializer, implement as needed
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+class UserUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomUser
+        fields = ['username', 'email', 'profile_picture']
+        read_only_fields = ['email']  # Email cannot be changed
+
+class ChangePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True, validators=[validate_password])
+
+class ProfilePictureSerializer(serializers.Serializer):
+    image = serializers.ImageField(required=True)
+
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -50,9 +68,3 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             'profile_picture': self.user.profile_picture,
         }
         return data
-
-
-def validate_username(self, value):
-    if CustomUser.objects.filter(username=value).exists():
-        raise serializers.ValidationError("A user with this username already exists.")
-    return value

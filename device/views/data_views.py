@@ -33,48 +33,105 @@ device_data_schema = openapi.Schema(
 def receive_device_data(request):
     try:
         device = Device.objects.get(id=request.data.get('DID'))
+        
+       
+        tamper_value = str(request.data.get('TAMPER')).lower()
+        
         data = DeviceData.objects.create(
             device=device,
             alert=request.data.get('ALERT'),
             count=request.data.get('count'),
             refer_val=request.data.get('REFER_Val'),
-            tamper=request.data.get('TAMPER')
+            tamper=tamper_value
         )
 
-        if request.data.get('ALERT') == "LOW":
-            Notification.objects.create(
+        # Check conditions for notifications
+        alert_status = request.data.get('ALERT')
+        is_low_alert = alert_status == "LOW"
+        is_tampered = tamper_value == "true"
+        
+        notifications_to_send = []
+        
+        # Check all three conditions
+        if is_low_alert and is_tampered:
+            # Both conditions are true - CRITICAL
+            notifications_to_send.append({
+                "type": "critical",
+                "title": "🚨 CRITICAL Alert",
+                "message": f"[Room {device.room_number}, Floor {device.floor_number}] Low tissue AND tampering detected!"
+            })
+        elif is_low_alert:
+            # Only LOW alert
+            notifications_to_send.append({
+                "type": "low",
+                "title": "⚠️ Low Tissue Alert",
+                "message": f"[Room {device.room_number}, Floor {device.floor_number}] Low tissue detected"
+            })
+        elif is_tampered:
+            # Only TAMPER alert
+            notifications_to_send.append({
+                "type": "tamper",
+                "title": "🔒 Tamper Alert",
+                "message": f"[Room {device.room_number}, Floor {device.floor_number}] Device tampering detected"
+            })
+        
+        # Send all applicable notifications
+        for notif_data in notifications_to_send:
+            # Create notification record
+            notification = Notification.objects.create(
                 device=device,
-                message=f"[{device.floor_number}-{device.room_number}] LOW tissue alert at {data.timestamp}"
+                message=notif_data["message"]
             )
-
+            
+            
             channel_layer = get_channel_layer()
             async_to_sync(channel_layer.group_send)(
                 "notifications",
                 {
                     "type": "send_notification",
                     "content": {
+                        "id": notification.id,
                         "device_id": device.id,
                         "room": device.room_number,
                         "floor": device.floor_number,
                         "timestamp": str(data.timestamp),
-                        "alert": "LOW tissue alert"
+                        "alert": alert_status,
+                        "tamper": tamper_value,
+                        "notification_type": notif_data["type"],
+                        "title": notif_data["title"],
+                        "message": notif_data["message"],
+                        "created_at": str(notification.created_at)
                     }
                 }
             )
-
+            
+            
             tokens = ExpoPushToken.objects.all()
             for token_entry in tokens:
-                send_push_notification(
-                    token_entry.token,
-                    title="🚨 LOW Tissue Alert",
-                    body=f"Device {device.room_number} (Floor {device.floor_number}) triggered a LOW alert",
-                    data={"device_id": device.id}
-                )
+                try:
+                    send_push_notification(
+                        token_entry.token,
+                        title=notif_data["title"],
+                        body=notif_data["message"],
+                        data={
+                            "device_id": device.id,
+                            "notification_id": notification.id,
+                            "type": notif_data["type"]
+                        }
+                    )
+                except Exception as e:
+                    print(f"Failed to send push notification to {token_entry.token}: {e}")
 
-        return Response({"message": "Data recorded successfully"}, status=201)
+        return Response({
+            "message": "Data recorded successfully",
+            "notifications_sent": len(notifications_to_send),
+            "notification_types": [n["type"] for n in notifications_to_send]
+        }, status=201)
 
     except Device.DoesNotExist:
         return Response({"error": "Device not found"}, status=404)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
 
 
 @swagger_auto_schema(
