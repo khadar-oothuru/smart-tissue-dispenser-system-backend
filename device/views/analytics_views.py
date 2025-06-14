@@ -1,293 +1,3 @@
-# from rest_framework.decorators import api_view, permission_classes
-# from rest_framework.permissions import IsAuthenticated
-# from rest_framework.response import Response
-# from drf_yasg.utils import swagger_auto_schema
-# from drf_yasg import openapi
-# from django.http import HttpResponse
-# from django.db.models import Max, Count, Q
-# from django.utils import timezone
-# from datetime import datetime, timedelta
-# import csv
-# import json
-
-# from device.models import Device, DeviceData
-
-# @swagger_auto_schema(
-#     method='get',
-#     responses={200: openapi.Response('Analytics per device')},
-#     operation_description="Get analytics like LOW alerts and last alert timestamp for each device"
-# )
-# @api_view(['GET'])
-# @permission_classes([IsAuthenticated])
-# def device_analytics(request):
-#     devices = Device.objects.all()
-#     analytics = []
-
-#     for device in devices:
-#         low_alerts = DeviceData.objects.filter(device=device, alert="LOW").count()
-#         last_entry = DeviceData.objects.filter(device=device).order_by('-timestamp').first()
-#         analytics.append({
-#             "device_id": device.id,
-#             "room": device.room_number,
-#             "floor": device.floor_number,
-#             "low_alert_count": low_alerts,
-#             "last_alert_time": last_entry.timestamp if last_entry else None
-#         })
-
-#     return Response(analytics)
-
-
-# @swagger_auto_schema(
-#     method='get',
-#     responses={200: openapi.Response('Advanced analytics per device')},
-#     operation_description="Advanced analytics: total entries, low alerts, tamper counts, last alert timestamp"
-# )
-# @api_view(['GET'])
-# @permission_classes([IsAuthenticated])
-# def advanced_analytics(request):
-#     data = []
-#     devices = Device.objects.all()
-#     for device in devices:
-#         device_data = DeviceData.objects.filter(device=device)
-#         low_alerts = device_data.filter(alert="LOW").count()
-#         # Fix: Filter for string "true" instead of boolean True
-#         tamper_count = device_data.filter(tamper="true").count()  # Changed this line
-#         total_data = device_data.count()
-#         last_alert = device_data.aggregate(Max('timestamp'))['timestamp__max']
-
-#         data.append({
-#             "device_id": device.id,
-#             "room": device.room_number,
-#             "floor": device.floor_number,
-#             "total_entries": total_data,
-#             "low_alert_count": low_alerts,
-#             "tamper_count": tamper_count,
-#             "last_alert_time": last_alert
-#         })
-#     return Response(data)
-
-
-# @swagger_auto_schema(
-#     method='get',
-#     manual_parameters=[
-#         openapi.Parameter('period', openapi.IN_QUERY, description="Period: weekly, monthly, quarterly, yearly", type=openapi.TYPE_STRING),
-#         openapi.Parameter('device_id', openapi.IN_QUERY, description="Specific device ID (optional)", type=openapi.TYPE_INTEGER),
-#     ],
-#     responses={200: openapi.Response('Time-based analytics')},
-#     operation_description="Get analytics data for different time periods"
-# )
-# @api_view(['GET'])
-# @permission_classes([IsAuthenticated])
-# def time_based_analytics(request):
-#     period = request.GET.get('period', 'weekly')
-#     device_id = request.GET.get('device_id')
-    
-#     now = timezone.now()
-    
-#     # Calculate date ranges based on period
-#     if period == 'weekly':
-#         start_date = now - timedelta(weeks=12)  # Last 12 weeks
-#         date_format = '%Y-W%U'
-#         period_name = 'Week'
-#     elif period == 'monthly':
-#         start_date = now - timedelta(days=365)  # Last 12 months
-#         date_format = '%Y-%m'
-#         period_name = 'Month'
-#     elif period == 'quarterly':
-#         start_date = now - timedelta(days=365*2)  # Last 8 quarters
-#         date_format = '%Y-Q'
-#         period_name = 'Quarter'
-#     elif period == 'yearly':
-#         start_date = now - timedelta(days=365*5)  # Last 5 years
-#         date_format = '%Y'
-#         period_name = 'Year'
-#     else:
-#         return Response({'error': 'Invalid period'}, status=400)
-    
-#     # Filter devices
-#     devices = Device.objects.all()
-#     if device_id:
-#         devices = devices.filter(id=device_id)
-    
-#     analytics_data = []
-    
-#     for device in devices:
-#         device_data = DeviceData.objects.filter(
-#             device=device,
-#             timestamp__gte=start_date
-#         ).order_by('timestamp')
-        
-#         # Group data by time periods
-#         period_data = {}
-        
-#         for data_point in device_data:
-#             if period == 'quarterly':
-#                 quarter = f"{data_point.timestamp.year}-Q{((data_point.timestamp.month-1)//3)+1}"
-#                 period_key = quarter
-#             else:
-#                 period_key = data_point.timestamp.strftime(date_format)
-            
-#             if period_key not in period_data:
-#                 period_data[period_key] = {
-#                     'total_entries': 0,
-#                     'low_alerts': 0,
-#                     'tamper_alerts': 0,
-#                     'high_alerts': 0,
-#                     'medium_alerts': 0
-#                 }
-            
-#             period_data[period_key]['total_entries'] += 1
-            
-#             if data_point.alert == 'LOW':
-#                 period_data[period_key]['low_alerts'] += 1
-#             elif data_point.alert == 'HIGH':
-#                 period_data[period_key]['high_alerts'] += 1
-#             elif data_point.alert == 'MEDIUM':
-#                 period_data[period_key]['medium_alerts'] += 1
-                
-#             if data_point.tamper:
-#                 period_data[period_key]['tamper_alerts'] += 1
-        
-#         # Convert to list format
-#         periods = []
-#         for period_key, data in sorted(period_data.items()):
-#             periods.append({
-#                 'period': period_key,
-#                 'period_name': f"{period_name} {period_key}",
-#                 **data
-#             })
-        
-#         analytics_data.append({
-#             'device_id': device.id,
-#             'room': device.room_number,
-#             'floor': device.floor_number,
-#             'device_name': getattr(device, 'name', f'Device {device.id}'),
-#             'periods': periods
-#         })
-    
-#     return Response({
-#         'period_type': period,
-#         'data': analytics_data
-#     })
-
-
-# @swagger_auto_schema(
-#     method='get',
-#     manual_parameters=[
-#         openapi.Parameter('period', openapi.IN_QUERY, description="Period: weekly, monthly, quarterly, yearly", type=openapi.TYPE_STRING),
-#         openapi.Parameter('device_id', openapi.IN_QUERY, description="Specific device ID (optional)", type=openapi.TYPE_INTEGER),
-#         openapi.Parameter('format', openapi.IN_QUERY, description="Download format: csv or json", type=openapi.TYPE_STRING),
-#     ],
-#     responses={200: openapi.Response('Download analytics data')},
-#     operation_description="Download analytics data in CSV or JSON format"
-# )
-# @api_view(['GET'])
-# @permission_classes([IsAuthenticated])
-# def download_analytics(request):
-#     period = request.GET.get('period', 'weekly')
-#     device_id = request.GET.get('device_id')
-#     format_type = request.GET.get('format', 'csv')
-    
-#     # Get the same data as time_based_analytics
-#     request_copy = request._request if hasattr(request, '_request') else request
-#     request_copy.GET = request.GET
-    
-#     # Get analytics data
-#     analytics_response = time_based_analytics(request)
-#     analytics_data = analytics_response.data
-    
-#     filename = f"analytics_{period}_{timezone.now().strftime('%Y%m%d_%H%M%S')}"
-    
-#     if format_type == 'csv':
-#         response = HttpResponse(content_type='text/csv')
-#         response['Content-Disposition'] = f'attachment; filename="{filename}.csv"'
-        
-#         writer = csv.writer(response)
-        
-#         # Write headers
-#         writer.writerow([
-#             'Device ID', 'Room', 'Floor', 'Device Name', 'Period', 
-#             'Total Entries', 'Low Alerts', 'High Alerts', 'Medium Alerts', 'Tamper Alerts'
-#         ])
-        
-#         # Write data
-#         for device_data in analytics_data['data']:
-#             for period_data in device_data['periods']:
-#                 writer.writerow([
-#                     device_data['device_id'],
-#                     device_data['room'],
-#                     device_data['floor'],
-#                     device_data['device_name'],
-#                     period_data['period_name'],
-#                     period_data['total_entries'],
-#                     period_data['low_alerts'],
-#                     period_data['high_alerts'],
-#                     period_data['medium_alerts'],
-#                     period_data['tamper_alerts']
-#                 ])
-        
-#         return response
-    
-#     elif format_type == 'json':
-#         response = HttpResponse(
-#             json.dumps(analytics_data, indent=2, default=str),
-#             content_type='application/json'
-#         )
-#         response['Content-Disposition'] = f'attachment; filename="{filename}.json"'
-#         return response
-    
-#     else:
-#         return Response({'error': 'Invalid format type'}, status=400)
-
-
-# @swagger_auto_schema(
-#     method='get',
-#     responses={200: openapi.Response('Summary analytics for dashboard')},
-#     operation_description="Get summary analytics for dashboard display"
-# )
-# @api_view(['GET'])
-# @permission_classes([IsAuthenticated])
-# def summary_analytics(request):
-#     now = timezone.now()
-    
-#     # Overall stats
-#     total_devices = Device.objects.count()
-#     total_entries = DeviceData.objects.count()
-    
-#     # Recent activity (last 24 hours)
-#     last_24h = now - timedelta(hours=24)
-#     recent_entries = DeviceData.objects.filter(timestamp__gte=last_24h).count()
-#     recent_alerts = DeviceData.objects.filter(
-#         timestamp__gte=last_24h,
-#         alert__in=['LOW', 'HIGH', 'MEDIUM']
-#     ).count()
-    
-#     # Alert distribution (all time)
-#     alert_distribution = {
-#         'low': DeviceData.objects.filter(alert='LOW').count(),
-#         'medium': DeviceData.objects.filter(alert='MEDIUM').count(),
-#         'high': DeviceData.objects.filter(alert='HIGH').count(),
-#         'tamper': DeviceData.objects.filter(tamper=True).count()
-#     }
-    
-#     # Most active devices (last 7 days)
-#     last_week = now - timedelta(days=7)
-#     active_devices = DeviceData.objects.filter(
-#         timestamp__gte=last_week
-#     ).values('device__id', 'device__room_number', 'device__floor_number').annotate(
-#         entry_count=Count('id')
-#     ).order_by('-entry_count')[:5]
-    
-#     return Response({
-#         'summary': {
-#             'total_devices': total_devices,
-#             'total_entries': total_entries,
-#             'recent_entries_24h': recent_entries,
-#             'recent_alerts_24h': recent_alerts
-#         },
-#         'alert_distribution': alert_distribution,
-#         'most_active_devices': list(active_devices)
-#     })
 
 
 from rest_framework.decorators import api_view, permission_classes
@@ -300,6 +10,8 @@ from django.db.models import Max, Count, Q
 from django.utils import timezone
 from datetime import datetime, timedelta
 import csv
+import io
+import logging
 import json
 
 from device.models import Device, DeviceData
@@ -518,179 +230,13 @@ def device_status_summary(request):
     })
 
 
-@swagger_auto_schema(
-    method='get',
-    manual_parameters=[
-        openapi.Parameter('period', openapi.IN_QUERY, description="Period: weekly, monthly, quarterly, yearly", type=openapi.TYPE_STRING),
-        openapi.Parameter('device_id', openapi.IN_QUERY, description="Specific device ID (optional)", type=openapi.TYPE_INTEGER),
-    ],
-    responses={200: openapi.Response('Time-based analytics')},
-    operation_description="Get analytics data for different time periods"
-)
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def time_based_analytics(request):
-    period = request.GET.get('period', 'weekly')
-    device_id = request.GET.get('device_id')
-    
-    now = timezone.now()
-    
-    # Calculate date ranges based on period
-    if period == 'weekly':
-        start_date = now - timedelta(weeks=12)  # Last 12 weeks
-        date_format = '%Y-W%U'
-        period_name = 'Week'
-    elif period == 'monthly':
-        start_date = now - timedelta(days=365)  # Last 12 months
-        date_format = '%Y-%m'
-        period_name = 'Month'
-    elif period == 'quarterly':
-        start_date = now - timedelta(days=365*2)  # Last 8 quarters
-        date_format = '%Y-Q'
-        period_name = 'Quarter'
-    elif period == 'yearly':
-        start_date = now - timedelta(days=365*5)  # Last 5 years
-        date_format = '%Y'
-        period_name = 'Year'
-    else:
-        return Response({'error': 'Invalid period'}, status=400)
-    
-    # Filter devices
-    devices = Device.objects.all()
-    if device_id:
-        devices = devices.filter(id=device_id)
-    
-    analytics_data = []
-    
-    for device in devices:
-        device_data = DeviceData.objects.filter(
-            device=device,
-            timestamp__gte=start_date
-        ).order_by('timestamp')
-        
-        # Group data by time periods
-        period_data = {}
-        
-        for data_point in device_data:
-            if period == 'quarterly':
-                quarter = f"{data_point.timestamp.year}-Q{((data_point.timestamp.month-1)//3)+1}"
-                period_key = quarter
-            else:
-                period_key = data_point.timestamp.strftime(date_format)
-            
-            if period_key not in period_data:
-                period_data[period_key] = {
-                    'total_entries': 0,
-                    'low_alerts': 0,
-                    'tamper_alerts': 0,
-                    'high_alerts': 0,
-                    'medium_alerts': 0
-                }
-            
-            period_data[period_key]['total_entries'] += 1
-            
-            if data_point.alert == 'LOW':
-                                period_data[period_key]['low_alerts'] += 1
-            elif data_point.alert == 'HIGH':
-                period_data[period_key]['high_alerts'] += 1
-            elif data_point.alert == 'MEDIUM':
-                period_data[period_key]['medium_alerts'] += 1
-                
-            # Fix: Check for string "true" instead of boolean
-            if data_point.tamper == "true":
-                period_data[period_key]['tamper_alerts'] += 1
-        
-        # Convert to list format
-        periods = []
-        for period_key, data in sorted(period_data.items()):
-            periods.append({
-                'period': period_key,
-                'period_name': f"{period_name} {period_key}",
-                **data
-            })
-        
-        analytics_data.append({
-            'device_id': device.id,
-            'room': device.room_number,
-            'floor': device.floor_number,
-            'device_name': getattr(device, 'name', f'Device {device.id}'),
-            'periods': periods
-        })
-    
-    return Response({
-        'period_type': period,
-        'data': analytics_data
-    })
 
 
-@swagger_auto_schema(
-    method='get',
-    manual_parameters=[
-        openapi.Parameter('period', openapi.IN_QUERY, description="Period: weekly, monthly, quarterly, yearly", type=openapi.TYPE_STRING),
-        openapi.Parameter('device_id', openapi.IN_QUERY, description="Specific device ID (optional)", type=openapi.TYPE_INTEGER),
-        openapi.Parameter('format', openapi.IN_QUERY, description="Download format: csv or json", type=openapi.TYPE_STRING),
-    ],
-    responses={200: openapi.Response('Download analytics data')},
-    operation_description="Download analytics data in CSV or JSON format"
-)
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def download_analytics(request):
-    period = request.GET.get('period', 'weekly')
-    device_id = request.GET.get('device_id')
-    format_type = request.GET.get('format', 'csv')
-    
-    # Get the same data as time_based_analytics
-    request_copy = request._request if hasattr(request, '_request') else request
-    request_copy.GET = request.GET
-    
-    # Get analytics data
-    analytics_response = time_based_analytics(request)
-    analytics_data = analytics_response.data
-    
-    filename = f"analytics_{period}_{timezone.now().strftime('%Y%m%d_%H%M%S')}"
-    
-    if format_type == 'csv':
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = f'attachment; filename="{filename}.csv"'
-        
-        writer = csv.writer(response)
-        
-        # Write headers
-        writer.writerow([
-            'Device ID', 'Room', 'Floor', 'Device Name', 'Period', 
-            'Total Entries', 'Low Alerts', 'High Alerts', 'Medium Alerts', 'Tamper Alerts'
-        ])
-        
-        # Write data
-        for device_data in analytics_data['data']:
-            for period_data in device_data['periods']:
-                writer.writerow([
-                    device_data['device_id'],
-                    device_data['room'],
-                    device_data['floor'],
-                    device_data['device_name'],
-                    period_data['period_name'],
-                    period_data['total_entries'],
-                    period_data['low_alerts'],
-                    period_data['high_alerts'],
-                    period_data['medium_alerts'],
-                    period_data['tamper_alerts']
-                ])
-        
-        return response
-    
-    elif format_type == 'json':
-        response = HttpResponse(
-            json.dumps(analytics_data, indent=2, default=str),
-            content_type='application/json'
-        )
-        response['Content-Disposition'] = f'attachment; filename="{filename}.json"'
-        return response
-    
-    else:
-        return Response({'error': 'Invalid format type'}, status=400)
 
+
+
+
+#?  summary code start
 
 @swagger_auto_schema(
     method='get',
@@ -740,3 +286,603 @@ def summary_analytics(request):
         'alert_distribution': alert_distribution,
         'most_active_devices': list(active_devices)
     })
+
+
+
+# Helper function to get time-based analytics data
+def get_time_based_analytics_data(period, device_id=None):
+    now = timezone.now()
+    
+    # Calculate date ranges based on period
+    if period == 'weekly':
+        start_date = now - timedelta(weeks=12)  # Last 12 weeks
+        date_format = '%Y-W%U'
+        period_name = 'Week'
+    elif period == 'monthly':
+        start_date = now - timedelta(days=365)  # Last 12 months
+        date_format = '%Y-%m'
+        period_name = 'Month'
+    elif period == 'quarterly':
+        start_date = now - timedelta(days=365*2)  # Last 8 quarters
+        date_format = '%Y-Q'
+        period_name = 'Quarter'
+    elif period == 'yearly':
+        start_date = now - timedelta(days=365*5)  # Last 5 years
+        date_format = '%Y'
+        period_name = 'Year'
+    else:
+        return None
+
+    # Filter devices
+    devices = Device.objects.all()
+    if device_id:
+        devices = devices.filter(id=device_id)
+    
+    analytics_data = []
+    
+    for device in devices:
+        device_data = DeviceData.objects.filter(
+            device=device,
+            timestamp__gte=start_date
+        ).order_by('timestamp')
+        
+        # Group data by time periods
+        period_data = {}
+        
+        for data_point in device_data:
+            if period == 'quarterly':
+                quarter = f"{data_point.timestamp.year}-Q{((data_point.timestamp.month-1)//3)+1}"
+                period_key = quarter
+            else:
+                period_key = data_point.timestamp.strftime(date_format)
+            
+            if period_key not in period_data:
+                period_data[period_key] = {
+                    'total_entries': 0,
+                    'low_alerts': 0,
+                    'tamper_alerts': 0,
+                    'high_alerts': 0,
+                    'medium_alerts': 0
+                }
+            
+            period_data[period_key]['total_entries'] += 1
+            
+            if data_point.alert == 'LOW':
+                period_data[period_key]['low_alerts'] += 1
+            elif data_point.alert == 'HIGH':
+                period_data[period_key]['high_alerts'] += 1
+            elif data_point.alert == 'MEDIUM':
+                period_data[period_key]['medium_alerts'] += 1
+                
+            if data_point.tamper == "true":
+                period_data[period_key]['tamper_alerts'] += 1
+        
+        # Convert to list format
+        periods = []
+        for period_key, data in sorted(period_data.items()):
+            periods.append({
+                'period': period_key,
+                'period_name': f"{period_name} {period_key}",
+                **data
+            })
+        
+        analytics_data.append({
+            'device_id': device.id,
+            'room': device.room_number,
+            'floor': device.floor_number,
+            'device_name': getattr(device, 'name', f'Device {device.id}'),
+            'periods': periods
+        })
+    
+    return {
+        'period_type': period,
+        'data': analytics_data
+    }
+
+# Add this new function to your views.py
+@swagger_auto_schema(
+    method='get',
+    manual_parameters=[
+        openapi.Parameter(
+            name='period',
+            in_=openapi.IN_QUERY,
+            description="Time period: weekly, monthly, quarterly, yearly",
+            type=openapi.TYPE_STRING,
+            required=False,
+            enum=['weekly', 'monthly', 'quarterly', 'yearly']
+        ),
+        openapi.Parameter(
+            name='device_id',
+            in_=openapi.IN_QUERY,
+            description="Optional device ID to filter",
+            type=openapi.TYPE_INTEGER,
+            required=False
+        )
+    ],
+    responses={
+        200: openapi.Response('CSV analytics data file'),
+        400: openapi.Response('Invalid request parameters'),
+        500: openapi.Response('Server error')
+    },
+    operation_summary="Download CSV analytics data",
+    operation_description="Download device analytics in CSV format only"
+)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def download_csv_analytics(request):
+    """Dedicated endpoint just for CSV downloads"""
+    try:
+        # Get parameters
+        period = request.GET.get('period', 'weekly')
+        device_id = request.GET.get('device_id')
+        
+        # Get analytics data
+        analytics_data = get_time_based_analytics_data(period, device_id)
+        if analytics_data is None:
+            return Response({'error': 'Invalid period specified'}, status=400)
+        
+        # Generate filename
+        timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"analytics_{period}_{timestamp}"
+        
+        # Create buffer
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        
+        # Write header row
+        writer.writerow([
+            'Device ID', 'Room', 'Floor', 'Device Name', 'Period',
+            'Total Entries', 'Low Alerts', 'High Alerts',
+            'Medium Alerts', 'Tamper Alerts'
+        ])
+        
+        # Process device data
+        for device in analytics_data.get('data', []):
+            device_id = device.get('device_id', '')
+            room = device.get('room', '')
+            floor = device.get('floor', '')
+            device_name = device.get('device_name', '')
+            
+            periods = device.get('periods', [])
+            if not periods:
+                writer.writerow([
+                    device_id, room, floor, device_name, 'No data',
+                    0, 0, 0, 0, 0
+                ])
+            else:
+                for period_data in periods:
+                    writer.writerow([
+                        device_id,
+                        room,
+                        floor,
+                        device_name,
+                        period_data.get('period_name', ''),
+                        period_data.get('total_entries', 0),
+                        period_data.get('low_alerts', 0),
+                        period_data.get('high_alerts', 0),
+                        period_data.get('medium_alerts', 0),
+                        period_data.get('tamper_alerts', 0)
+                    ])
+        
+        # Get content
+        csv_content = buffer.getvalue()
+        buffer.close()
+        
+        # Create Django response object - key difference is forcing the content type
+        response = HttpResponse(content_type='text/csv')
+        response.write(csv_content)
+        response['Content-Disposition'] = f'attachment; filename="{filename}.csv"'
+        
+        return response
+    except Exception as e:
+        logger.exception(f"CSV download failed: {str(e)}")
+        return Response({'error': f'Server error: {str(e)}'}, status=500)
+    
+
+
+
+# Add this to your views.py
+@swagger_auto_schema(
+    method='get',
+    manual_parameters=[
+        openapi.Parameter(
+            name='period',
+            in_=openapi.IN_QUERY,
+            description="Time period: weekly, monthly, quarterly, yearly",
+            type=openapi.TYPE_STRING,
+            required=False,
+            enum=['weekly', 'monthly', 'quarterly', 'yearly']
+        ),
+        openapi.Parameter(
+            name='device_id',
+            in_=openapi.IN_QUERY,
+            description="Optional device ID to filter",
+            type=openapi.TYPE_INTEGER,
+            required=False
+        )
+    ],
+    responses={
+        200: openapi.Response('JSON analytics data file'),
+        400: openapi.Response('Invalid request parameters'),
+        500: openapi.Response('Server error')
+    },
+    operation_summary="Download JSON analytics data",
+    operation_description="Download device analytics in JSON format only"
+)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def download_json_analytics(request):
+    """Dedicated endpoint just for JSON downloads"""
+    try:
+        # Get parameters
+        period = request.GET.get('period', 'weekly')
+        device_id = request.GET.get('device_id')
+        
+        # Get analytics data
+        analytics_data = get_time_based_analytics_data(period, device_id)
+        if analytics_data is None:
+            return Response({'error': 'Invalid period specified'}, status=400)
+        
+        # Generate filename
+        timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"analytics_{period}_{timestamp}"
+        
+        # Create JSON content
+        json_content = json.dumps(
+            analytics_data,
+            indent=2,
+            ensure_ascii=False,
+            default=str
+        )
+        
+        # Create Django response object
+        response = HttpResponse(content_type='application/json')
+        response.write(json_content)
+        response['Content-Disposition'] = f'attachment; filename="{filename}.json"'
+        response['Cache-Control'] = 'no-cache'
+        
+        return response
+    except Exception as e:
+        logger.exception(f"JSON download failed: {str(e)}")
+        return Response({'error': f'Server error: {str(e)}'}, status=500)
+
+
+
+# Original analytics endpoint
+@swagger_auto_schema(
+    method='get',
+    manual_parameters=[
+        openapi.Parameter('period', openapi.IN_QUERY, description="Period: weekly, monthly, quarterly, yearly", type=openapi.TYPE_STRING),
+        openapi.Parameter('device_id', openapi.IN_QUERY, description="Specific device ID (optional)", type=openapi.TYPE_INTEGER),
+    ],
+    responses={200: openapi.Response('Time-based analytics')},
+    operation_description="Get analytics data for different time periods"
+)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def time_based_analytics(request):
+    period = request.GET.get('period', 'weekly')
+    device_id = request.GET.get('device_id')
+    
+    analytics_data = get_time_based_analytics_data(period, device_id)
+    if analytics_data is None:
+        return Response({'error': 'Invalid period'}, status=400)
+    
+    return Response(analytics_data)
+
+
+#! Test CSV Code
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def test_csv_download(request):
+    """Simple test endpoint that always returns a CSV file"""
+    try:
+        # Create a simple CSV
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(['Header1', 'Header2', 'Header3'])
+        writer.writerow(['Value1', 'Value2', 'Value3'])
+        writer.writerow(['Test1', 'Test2', 'Test3'])
+        
+        csv_content = buffer.getvalue()
+        buffer.close()
+        
+        # Log the generation
+        logger.info(f"Test CSV generated with content length: {len(csv_content)}")
+        
+        # Create response
+        response = HttpResponse(
+            content=csv_content,
+            content_type='text/csv'
+        )
+        response['Content-Disposition'] = 'attachment; filename="test_file.csv"'
+        return response
+    except Exception as e:
+        logger.exception(f"Test CSV download failed: {str(e)}")
+        return Response({'error': str(e)}, status=500)
+
+
+# # Helper function to get time-based analytics data
+# def get_time_based_analytics_data(period, device_id=None):
+#     now = timezone.now()
+    
+#     # Calculate date ranges based on period
+#     if period == 'weekly':
+#         start_date = now - timedelta(weeks=12)  # Last 12 weeks
+#         date_format = '%Y-W%U'
+#         period_name = 'Week'
+#     elif period == 'monthly':
+#         start_date = now - timedelta(days=365)  # Last 12 months
+#         date_format = '%Y-%m'
+#         period_name = 'Month'
+#     elif period == 'quarterly':
+#         start_date = now - timedelta(days=365*2)  # Last 8 quarters
+#         date_format = '%Y-Q'
+#         period_name = 'Quarter'
+#     elif period == 'yearly':
+#         start_date = now - timedelta(days=365*5)  # Last 5 years
+#         date_format = '%Y'
+#         period_name = 'Year'
+#     else:
+#         return None
+
+#     # Filter devices
+#     devices = Device.objects.all()
+#     if device_id:
+#         devices = devices.filter(id=device_id)
+    
+#     analytics_data = []
+    
+#     for device in devices:
+#         device_data = DeviceData.objects.filter(
+#             device=device,
+#             timestamp__gte=start_date
+#         ).order_by('timestamp')
+        
+#         # Group data by time periods
+#         period_data = {}
+        
+#         for data_point in device_data:
+#             if period == 'quarterly':
+#                 quarter = f"{data_point.timestamp.year}-Q{((data_point.timestamp.month-1)//3)+1}"
+#                 period_key = quarter
+#             else:
+#                 period_key = data_point.timestamp.strftime(date_format)
+            
+#             if period_key not in period_data:
+#                 period_data[period_key] = {
+#                     'total_entries': 0,
+#                     'low_alerts': 0,
+#                     'tamper_alerts': 0,
+#                     'high_alerts': 0,
+#                     'medium_alerts': 0
+#                 }
+            
+#             period_data[period_key]['total_entries'] += 1
+            
+#             if data_point.alert == 'LOW':
+#                 period_data[period_key]['low_alerts'] += 1
+#             elif data_point.alert == 'HIGH':
+#                 period_data[period_key]['high_alerts'] += 1
+#             elif data_point.alert == 'MEDIUM':
+#                 period_data[period_key]['medium_alerts'] += 1
+                
+#             if data_point.tamper == "true":
+#                 period_data[period_key]['tamper_alerts'] += 1
+        
+#         # Convert to list format
+#         periods = []
+#         for period_key, data in sorted(period_data.items()):
+#             periods.append({
+#                 'period': period_key,
+#                 'period_name': f"{period_name} {period_key}",
+#                 **data
+#             })
+        
+#         analytics_data.append({
+#             'device_id': device.id,
+#             'room': device.room_number,
+#             'floor': device.floor_number,
+#             'device_name': getattr(device, 'name', f'Device {device.id}'),
+#             'periods': periods
+#         })
+    
+#     return {
+#         'period_type': period,
+#         'data': analytics_data
+#     }
+
+# #! Update time_based_analytics view to use helper function
+
+# import csv
+# import io
+# import json
+# import logging
+# from datetime import timedelta
+
+# from django.utils import timezone
+# from django.http import HttpResponse, StreamingHttpResponse
+# from rest_framework.decorators import api_view, permission_classes
+# from rest_framework.permissions import IsAuthenticated
+# from rest_framework.response import Response
+# from drf_yasg.utils import swagger_auto_schema
+# from drf_yasg import openapi
+
+# # Set up logging
+# logger = logging.getLogger(__name__)
+
+# @swagger_auto_schema(
+#     method='get',
+#     manual_parameters=[
+#         openapi.Parameter(
+#             name='period',
+#             in_=openapi.IN_QUERY,
+#             description="Time period: weekly, monthly, quarterly, yearly",
+#             type=openapi.TYPE_STRING,
+#             required=False,
+#             enum=['weekly', 'monthly', 'quarterly', 'yearly']
+#         ),
+#         openapi.Parameter(
+#             name='device_id',
+#             in_=openapi.IN_QUERY,
+#             description="Optional device ID to filter",
+#             type=openapi.TYPE_INTEGER,
+#             required=False
+#         ),
+#         openapi.Parameter(
+#             name='format',
+#             in_=openapi.IN_QUERY,
+#             description="Download format: csv or json",
+#             type=openapi.TYPE_STRING,
+#             required=False,
+#             enum=['csv', 'json']
+#         )
+#     ],
+#     responses={
+#         200: openapi.Response('Analytics data file'),
+#         400: openapi.Response('Invalid request parameters'),
+#         500: openapi.Response('Server error')
+#     },
+#     operation_summary="Download analytics data",
+#     operation_description="Download device analytics in CSV or JSON format"
+# )
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def download_analytics(request):
+#     try:
+#         # Get and validate parameters
+#         period = request.GET.get('period', 'weekly')
+#         device_id = request.GET.get('device_id')
+#         format_type = request.GET.get('format', 'csv').lower()
+        
+#         if format_type not in ['csv', 'json']:
+#             return Response({'error': 'Invalid format. Use csv or json.'}, status=400)
+        
+#         # Get analytics data
+#         analytics_data = get_time_based_analytics_data(period, device_id)
+#         if analytics_data is None:
+#             return Response({'error': 'Invalid period specified'}, status=400)
+        
+#         # Generate filename
+#         timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+#         filename = f"analytics_{period}_{timestamp}"
+        
+#         if format_type == 'csv':
+#             return generate_csv_response(analytics_data, filename)
+#         return generate_json_response(analytics_data, filename)
+            
+#     except Exception as e:
+#         logger.exception("Download analytics failed")
+#         return Response({'error': f'Server error: {str(e)}'}, status=500)
+
+# def generate_csv_response(analytics_data, filename):
+#     """Efficient CSV streaming with proper escaping"""
+#     def csv_data_generator():
+#         # Create buffer and CSV writer
+#         buffer = io.StringIO()
+#         writer = csv.writer(buffer, quoting=csv.QUOTE_NONNUMERIC)
+        
+#         # Write header row
+#         header = [
+#             'Device ID', 'Room', 'Floor', 'Device Name', 'Period',
+#             'Total Entries', 'Low Alerts', 'High Alerts',
+#             'Medium Alerts', 'Tamper Alerts'
+#         ]
+#         writer.writerow(header)
+#         yield buffer.getvalue()
+#         buffer.seek(0)
+#         buffer.truncate(0)
+        
+#         # Process device data
+#         for device in analytics_data.get('data', []):
+#             device_id = device.get('device_id', '')
+#             room = device.get('room', '')
+#             floor = device.get('floor', '')
+#             device_name = device.get('device_name', '')
+            
+#             periods = device.get('periods', [])
+#             if not periods:
+#                 # Handle devices with no data
+#                 row = [
+#                     device_id, room, floor, device_name, 'No data',
+#                     0, 0, 0, 0, 0
+#                 ]
+#                 writer.writerow(row)
+#                 yield buffer.getvalue()
+#                 buffer.seek(0)
+#                 buffer.truncate(0)
+#             else:
+#                 # Process each period
+#                 for period_data in periods:
+#                     row = [
+#                         device_id,
+#                         room,
+#                         floor,
+#                         device_name,
+#                         period_data.get('period_name', ''),
+#                         period_data.get('total_entries', 0),
+#                         period_data.get('low_alerts', 0),
+#                         period_data.get('high_alerts', 0),
+#                         period_data.get('medium_alerts', 0),
+#                         period_data.get('tamper_alerts', 0)
+#                     ]
+#                     writer.writerow(row)
+#                     yield buffer.getvalue()
+#                     buffer.seek(0)
+#                     buffer.truncate(0)
+    
+#     # Create streaming response
+#     response = StreamingHttpResponse(
+#         csv_data_generator(),
+#         content_type='text/csv; charset=utf-8'
+#     )
+#     response['Content-Disposition'] = f'attachment; filename="{filename}.csv"'
+#     response['Cache-Control'] = 'no-cache'
+#     return response
+
+# def generate_json_response(analytics_data, filename):
+#     """JSON response generation with proper encoding"""
+#     try:
+#         json_content = json.dumps(
+#             analytics_data,
+#             indent=2,
+#             ensure_ascii=False,
+#             default=str
+#         )
+#         response = HttpResponse(
+#             json_content,
+#             content_type='application/json; charset=utf-8'
+#         )
+#         response['Content-Disposition'] = f'attachment; filename="{filename}.json"'
+#         response['Cache-Control'] = 'no-cache'
+#         return response
+#     except Exception as e:
+#         logger.error(f"JSON generation failed: {str(e)}")
+#         return Response(
+#             {'error': 'Failed to generate JSON file'},
+#             status=500
+#         )
+
+
+# # Original analytics endpoint
+# @swagger_auto_schema(
+#     method='get',
+#     manual_parameters=[
+#         openapi.Parameter('period', openapi.IN_QUERY, description="Period: weekly, monthly, quarterly, yearly", type=openapi.TYPE_STRING),
+#         openapi.Parameter('device_id', openapi.IN_QUERY, description="Specific device ID (optional)", type=openapi.TYPE_INTEGER),
+#     ],
+#     responses={200: openapi.Response('Time-based analytics')},
+#     operation_description="Get analytics data for different time periods"
+# )
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def time_based_analytics(request):
+#     period = request.GET.get('period', 'weekly')
+#     device_id = request.GET.get('device_id')
+    
+#     analytics_data = get_time_based_analytics_data(period, device_id)
+#     if analytics_data is None:
+#         return Response({'error': 'Invalid period'}, status=400)
+    
+#     return Response(analytics_data)

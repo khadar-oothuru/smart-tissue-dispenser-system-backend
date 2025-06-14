@@ -82,9 +82,13 @@ from .views.notification_views import (
 from .views.analytics_views import (
     device_analytics, 
     advanced_analytics,
-    device_realtime_status, 
+    device_realtime_status,
+    test_csv_download,
     time_based_analytics, 
-    download_analytics,
+    # download_analytics,
+    download_csv_analytics,
+    download_json_analytics,
+
     summary_analytics,
     device_status_summary,
 )
@@ -111,7 +115,8 @@ urlpatterns = [
     # Analytics endpoints
     path('device-analytics/', advanced_analytics, name='advanced_analytics'),
     path('device-analytics/time-based/', time_based_analytics, name='time_based_analytics'),
-    path('device-analytics/download/', download_analytics, name='download_analytics'),
+    # path('device-analytics/download/', download_analytics, name='download_analytics'),
+
     path('device-analytics/summary/', summary_analytics, name='summary_analytics'),
     path('device-analytics/realtime-status/', device_realtime_status, name='device_realtime_status'),
     path('device-analytics/status-summary/', device_status_summary, name='device_status_summary'),
@@ -123,4 +128,10 @@ urlpatterns = [
     # New WiFi-related endpoints
     path('devices/check-status/', check_device_status, name='check_device_status'),
     path('devices/update-status/', update_device_status, name='update_device_status'),
+
+    path('device-analytics/download/csv/', download_csv_analytics, name='download_csv_analytics'),
+    path('device-analytics/download/json/', download_json_analytics, name='download_json_analytics'),
+
+    # test 
+    path('test-csv/', test_csv_download, name='test_csv_download'),
 ]

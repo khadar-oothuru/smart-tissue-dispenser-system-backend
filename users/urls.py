@@ -79,8 +79,10 @@ urlpatterns = [
     # Password reset endpoints with OTP
     path('forgot/', ForgotPasswordView.as_view(), name='forgot_password'),
     # path('verify-otp/', VerifyOTPView.as_view(), name='verify_otp'),
-    path('reset-password/', ResetPasswordView.as_view(), name='reset_password'),
-    path('reset/<uidb64>/<token>/', ResetPasswordView.as_view(), name='reset-password-legacy'),
+    # path('reset-password/', ResetPasswordView.as_view(), name='reset_password'),
+    # path('reset/<uidb64>/<token>/', ResetPasswordView.as_view(), name='reset-password-legacy'),
+    path('forgot/', ForgotPasswordView.as_view(), name='forgot_password'),
+    path('reset/<uidb64>/<token>/', ResetPasswordView.as_view(), name='reset-password'),
     
     # Other endpoints
     path('google-login/', GoogleLoginAPIView.as_view(), name='google_login'),
