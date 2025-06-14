@@ -34,7 +34,6 @@ def receive_device_data(request):
     try:
         device = Device.objects.get(id=request.data.get('DID'))
         
-       
         tamper_value = str(request.data.get('TAMPER')).lower()
         
         data = DeviceData.objects.create(
@@ -52,38 +51,48 @@ def receive_device_data(request):
         
         notifications_to_send = []
         
-        # Check all three conditions
+        # Check all three conditions with improved logic
         if is_low_alert and is_tampered:
             # Both conditions are true - CRITICAL
             notifications_to_send.append({
                 "type": "critical",
+                "notification_type": "critical",  # Add this for consistency
                 "title": "🚨 CRITICAL Alert",
-                "message": f"[Room {device.room_number}, Floor {device.floor_number}] Low tissue AND tampering detected!"
+                "message": f"[Room {device.room_number}, Floor {device.floor_number}] Low tissue AND tampering detected!",
+                "priority": 100
             })
         elif is_low_alert:
             # Only LOW alert
             notifications_to_send.append({
                 "type": "low",
-                "title": "⚠️ Low Tissue Alert",
-                "message": f"[Room {device.room_number}, Floor {device.floor_number}] Low tissue detected"
+                "notification_type": "low",  # Add this for consistency
+                "title": "⚠️ Low Tissue Alert", 
+                "message": f"[Room {device.room_number}, Floor {device.floor_number}] Low tissue detected",
+                "priority": 80
             })
         elif is_tampered:
             # Only TAMPER alert
             notifications_to_send.append({
                 "type": "tamper",
+                "notification_type": "tamper",  # Add this for consistency
                 "title": "🔒 Tamper Alert",
-                "message": f"[Room {device.room_number}, Floor {device.floor_number}] Device tampering detected"
+                "message": f"[Room {device.room_number}, Floor {device.floor_number}] Device tampering detected",
+                "priority": 95
             })
         
         # Send all applicable notifications
         for notif_data in notifications_to_send:
-            # Create notification record
+            # Create notification record with type field
             notification = Notification.objects.create(
                 device=device,
-                message=notif_data["message"]
+                message=notif_data["message"],
+                title=notif_data["title"] if hasattr(Notification, 'title') else None,  # Add title if field exists
+                # Add these fields if they exist in your Notification model:
+                # notification_type=notif_data["type"],
+                # priority=notif_data["priority"]
             )
             
-            
+            # Enhanced WebSocket message payload
             channel_layer = get_channel_layer()
             async_to_sync(channel_layer.group_send)(
                 "notifications",
@@ -92,20 +101,30 @@ def receive_device_data(request):
                     "content": {
                         "id": notification.id,
                         "device_id": device.id,
+                        "device": {
+                            "id": device.id,
+                            "name": device.name if hasattr(device, 'name') else f"Device {device.id}",
+                            "device_id": device.id,
+                            "room_number": device.room_number,
+                            "floor_number": device.floor_number,
+                        },
                         "room": device.room_number,
                         "floor": device.floor_number,
                         "timestamp": str(data.timestamp),
                         "alert": alert_status,
                         "tamper": tamper_value,
-                        "notification_type": notif_data["type"],
+                        "type": notif_data["type"],  # Primary type field
+                        "notification_type": notif_data["notification_type"],  # Secondary type field
                         "title": notif_data["title"],
                         "message": notif_data["message"],
-                        "created_at": str(notification.created_at)
+                        "priority": notif_data["priority"],
+                        "created_at": str(notification.created_at),
+                        "is_read": False,  # New notifications are unread
                     }
                 }
             )
             
-            
+            # Enhanced push notification with type
             tokens = ExpoPushToken.objects.all()
             for token_entry in tokens:
                 try:
@@ -116,7 +135,11 @@ def receive_device_data(request):
                         data={
                             "device_id": device.id,
                             "notification_id": notification.id,
-                            "type": notif_data["type"]
+                            "type": notif_data["type"],
+                            "notification_type": notif_data["notification_type"],
+                            "priority": notif_data["priority"],
+                            "room": device.room_number,
+                            "floor": device.floor_number,
                         }
                     )
                 except Exception as e:
@@ -125,12 +148,20 @@ def receive_device_data(request):
         return Response({
             "message": "Data recorded successfully",
             "notifications_sent": len(notifications_to_send),
-            "notification_types": [n["type"] for n in notifications_to_send]
+            "notification_types": [n["type"] for n in notifications_to_send],
+            "alert_status": alert_status,
+            "tamper_status": tamper_value,
+            "device_info": {
+                "id": device.id,
+                "room": device.room_number,
+                "floor": device.floor_number,
+            }
         }, status=201)
 
     except Device.DoesNotExist:
         return Response({"error": "Device not found"}, status=404)
     except Exception as e:
+        print(f"Error in receive_device_data: {str(e)}")  # Debug log
         return Response({"error": str(e)}, status=500)
 
 
