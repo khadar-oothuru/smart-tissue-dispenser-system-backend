@@ -219,8 +219,8 @@ def receive_device_data(request):
             notifications_to_send.append({
                 "type": "critical",
                 "notification_type": "critical",  # Add this for consistency
-                "title": "🚨 CRITICAL Alert",
-                "message": f"[Room {device.room_number}, Floor {device.floor_number}] Low tissue AND tampering detected!",
+                "title": "CRITICAL Alert",
+                "message": f"  Low tissue AND tampering detected!",
                 "priority": 100
             })
         elif is_low_alert:
@@ -228,8 +228,8 @@ def receive_device_data(request):
             notifications_to_send.append({
                 "type": "low",
                 "notification_type": "low",  # Add this for consistency
-                "title": "⚠️ Low Tissue Alert", 
-                "message": f"[Room {device.room_number}, Floor {device.floor_number}] Low tissue detected",
+                "title": "Low Tissue Alert", 
+                "message": f"Low tissue detected",
                 "priority": 80
             })
         elif is_tampered:
@@ -237,8 +237,8 @@ def receive_device_data(request):
             notifications_to_send.append({
                 "type": "tamper",
                 "notification_type": "tamper",  # Add this for consistency
-                "title": "🔒 Tamper Alert",
-                "message": f"[Room {device.room_number}, Floor {device.floor_number}] Device tampering detected",
+                "title": "Tamper Alert",
+                "message": f" Device tampering detected",
                 "priority": 95
             })
           # Send all applicable notifications
