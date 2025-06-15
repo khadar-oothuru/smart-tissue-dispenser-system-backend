@@ -1,5 +1,3 @@
-
-
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -15,6 +13,9 @@ import logging
 import json
 
 from device.models import Device, DeviceData
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 @swagger_auto_schema(
     method='get',
@@ -603,286 +604,185 @@ def test_csv_download(request):
         return Response({'error': str(e)}, status=500)
 
 
-# # Helper function to get time-based analytics data
-# def get_time_based_analytics_data(period, device_id=None):
-#     now = timezone.now()
-    
-#     # Calculate date ranges based on period
-#     if period == 'weekly':
-#         start_date = now - timedelta(weeks=12)  # Last 12 weeks
-#         date_format = '%Y-W%U'
-#         period_name = 'Week'
-#     elif period == 'monthly':
-#         start_date = now - timedelta(days=365)  # Last 12 months
-#         date_format = '%Y-%m'
-#         period_name = 'Month'
-#     elif period == 'quarterly':
-#         start_date = now - timedelta(days=365*2)  # Last 8 quarters
-#         date_format = '%Y-Q'
-#         period_name = 'Quarter'
-#     elif period == 'yearly':
-#         start_date = now - timedelta(days=365*5)  # Last 5 years
-#         date_format = '%Y'
-#         period_name = 'Year'
-#     else:
-#         return None
 
-#     # Filter devices
-#     devices = Device.objects.all()
-#     if device_id:
-#         devices = devices.filter(id=device_id)
+
+
+
+
+
+@swagger_auto_schema(
+    method='get',
+    responses={200: openapi.Response('Device status distribution analytics')},
+    operation_description="Get detailed status distribution for all devices with historical data"
+)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def device_status_distribution(request):
+    """
+    Returns detailed status distribution for each device including:
+    - Current status
+    - Historical status counts
+    - Status percentages
+    - Last status change timestamp
+    """
+    devices = Device.objects.all()
+    distribution_data = []
     
-#     analytics_data = []
-    
-#     for device in devices:
-#         device_data = DeviceData.objects.filter(
-#             device=device,
-#             timestamp__gte=start_date
-#         ).order_by('timestamp')
+    for device in devices:
+        # Get all device data for this device
+        all_device_data = DeviceData.objects.filter(device=device)
+        total_entries = all_device_data.count()
         
-#         # Group data by time periods
-#         period_data = {}
+        # Get latest data for current status
+        latest_data = all_device_data.order_by('-timestamp').first()
         
-#         for data_point in device_data:
-#             if period == 'quarterly':
-#                 quarter = f"{data_point.timestamp.year}-Q{((data_point.timestamp.month-1)//3)+1}"
-#                 period_key = quarter
-#             else:
-#                 period_key = data_point.timestamp.strftime(date_format)
+        # Calculate status distribution
+        status_counts = {
+            'normal': 0,
+            'low': 0,
+            'medium': 0,
+            'high': 0,
+            'tamper': 0,
+            'critical': 0  # low + tamper
+        }
+        
+        # Count different alert types
+        low_alerts = all_device_data.filter(alert='LOW').count()
+        medium_alerts = all_device_data.filter(alert='MEDIUM').count()
+        high_alerts = all_device_data.filter(alert='HIGH').count()
+        tamper_alerts = all_device_data.filter(tamper='true').count()
+        critical_alerts = all_device_data.filter(alert='LOW', tamper='true').count()
+        
+        # Normal status (everything else)
+        normal_count = total_entries - low_alerts - medium_alerts - high_alerts
+        if normal_count < 0:
+            normal_count = 0
             
-#             if period_key not in period_data:
-#                 period_data[period_key] = {
-#                     'total_entries': 0,
-#                     'low_alerts': 0,
-#                     'tamper_alerts': 0,
-#                     'high_alerts': 0,
-#                     'medium_alerts': 0
-#                 }
+        status_counts['low'] = low_alerts
+        status_counts['medium'] = medium_alerts
+        status_counts['high'] = high_alerts
+        status_counts['tamper'] = tamper_alerts
+        status_counts['critical'] = critical_alerts
+        status_counts['normal'] = normal_count
+        
+        # Calculate percentages
+        status_percentages = {}
+        for status, count in status_counts.items():
+            if total_entries > 0:
+                status_percentages[status] = round((count / total_entries) * 100, 2)
+            else:
+                status_percentages[status] = 0.0
+        
+        # Determine current status
+        current_status = "inactive"
+        current_status_priority = -1
+        is_active = False
+        
+        if latest_data:
+            time_since_update = timezone.now() - latest_data.timestamp
+            is_active = time_since_update.total_seconds() <= 300  # 5 minutes
             
-#             period_data[period_key]['total_entries'] += 1
-            
-#             if data_point.alert == 'LOW':
-#                 period_data[period_key]['low_alerts'] += 1
-#             elif data_point.alert == 'HIGH':
-#                 period_data[period_key]['high_alerts'] += 1
-#             elif data_point.alert == 'MEDIUM':
-#                 period_data[period_key]['medium_alerts'] += 1
+            if is_active:
+                if latest_data.tamper == "true" and latest_data.alert == "LOW":
+                    current_status = "critical"
+                    current_status_priority = 4
+                elif latest_data.tamper == "true":
+                    current_status = "tamper"
+                    current_status_priority = 3
+                elif latest_data.alert == "LOW":
+                    current_status = "low"
+                    current_status_priority = 2
+                elif latest_data.alert == "MEDIUM":
+                    current_status = "medium"
+                    current_status_priority = 1
+                elif latest_data.alert == "HIGH":
+                    current_status = "high"
+                    current_status_priority = 1
+                else:
+                    current_status = "normal"
+                    current_status_priority = 0
+            else:
+                current_status = "inactive"
+                current_status_priority = -1
+        
+        # Get recent activity (last 24 hours)
+        last_24h = timezone.now() - timedelta(hours=24)
+        recent_entries = all_device_data.filter(timestamp__gte=last_24h).count()
+        recent_alerts = all_device_data.filter(
+            timestamp__gte=last_24h,
+            alert__in=['LOW', 'MEDIUM', 'HIGH']
+        ).count()
+        
+        # Last status change (when status actually changed)
+        last_status_change = None
+        if total_entries > 1:
+            # Get last two entries to compare
+            last_two = all_device_data.order_by('-timestamp')[:2]
+            if len(last_two) == 2:
+                current = last_two[0]
+                previous = last_two[1]
                 
-#             if data_point.tamper == "true":
-#                 period_data[period_key]['tamper_alerts'] += 1
+                # Check if status changed
+                current_alert_status = f"{current.alert}_{current.tamper}"
+                previous_alert_status = f"{previous.alert}_{previous.tamper}"
+                
+                if current_alert_status != previous_alert_status:
+                    last_status_change = current.timestamp
         
-#         # Convert to list format
-#         periods = []
-#         for period_key, data in sorted(period_data.items()):
-#             periods.append({
-#                 'period': period_key,
-#                 'period_name': f"{period_name} {period_key}",
-#                 **data
-#             })
+        device_distribution = {
+            'device_id': device.id,
+            'device_name': getattr(device, 'name', f'Device {device.id}'),
+            'room': device.room_number,
+            'floor': device.floor_number,
+            'is_active': is_active,
+            'current_status': current_status,
+            'current_status_priority': current_status_priority,
+            'total_entries': total_entries,
+            'status_counts': status_counts,
+            'status_percentages': status_percentages,
+            'recent_activity': {
+                'entries_24h': recent_entries,
+                'alerts_24h': recent_alerts
+            },
+            'timestamps': {
+                'last_updated': latest_data.timestamp if latest_data else None,
+                'last_status_change': last_status_change,
+                'first_entry': all_device_data.order_by('timestamp').first().timestamp if total_entries > 0 else None
+            },
+            'current_values': {
+                'alert': latest_data.alert if latest_data else None,
+                'tamper': latest_data.tamper == 'true' if latest_data else False,
+                'count': latest_data.count if latest_data else 0,
+                'refer_val': latest_data.refer_val if latest_data else None
+            } if latest_data else None
+        }
         
-#         analytics_data.append({
-#             'device_id': device.id,
-#             'room': device.room_number,
-#             'floor': device.floor_number,
-#             'device_name': getattr(device, 'name', f'Device {device.id}'),
-#             'periods': periods
-#         })
+        distribution_data.append(device_distribution)
     
-#     return {
-#         'period_type': period,
-#         'data': analytics_data
-#     }
-
-# #! Update time_based_analytics view to use helper function
-
-# import csv
-# import io
-# import json
-# import logging
-# from datetime import timedelta
-
-# from django.utils import timezone
-# from django.http import HttpResponse, StreamingHttpResponse
-# from rest_framework.decorators import api_view, permission_classes
-# from rest_framework.permissions import IsAuthenticated
-# from rest_framework.response import Response
-# from drf_yasg.utils import swagger_auto_schema
-# from drf_yasg import openapi
-
-# # Set up logging
-# logger = logging.getLogger(__name__)
-
-# @swagger_auto_schema(
-#     method='get',
-#     manual_parameters=[
-#         openapi.Parameter(
-#             name='period',
-#             in_=openapi.IN_QUERY,
-#             description="Time period: weekly, monthly, quarterly, yearly",
-#             type=openapi.TYPE_STRING,
-#             required=False,
-#             enum=['weekly', 'monthly', 'quarterly', 'yearly']
-#         ),
-#         openapi.Parameter(
-#             name='device_id',
-#             in_=openapi.IN_QUERY,
-#             description="Optional device ID to filter",
-#             type=openapi.TYPE_INTEGER,
-#             required=False
-#         ),
-#         openapi.Parameter(
-#             name='format',
-#             in_=openapi.IN_QUERY,
-#             description="Download format: csv or json",
-#             type=openapi.TYPE_STRING,
-#             required=False,
-#             enum=['csv', 'json']
-#         )
-#     ],
-#     responses={
-#         200: openapi.Response('Analytics data file'),
-#         400: openapi.Response('Invalid request parameters'),
-#         500: openapi.Response('Server error')
-#     },
-#     operation_summary="Download analytics data",
-#     operation_description="Download device analytics in CSV or JSON format"
-# )
-# @api_view(['GET'])
-# @permission_classes([IsAuthenticated])
-# def download_analytics(request):
-#     try:
-#         # Get and validate parameters
-#         period = request.GET.get('period', 'weekly')
-#         device_id = request.GET.get('device_id')
-#         format_type = request.GET.get('format', 'csv').lower()
-        
-#         if format_type not in ['csv', 'json']:
-#             return Response({'error': 'Invalid format. Use csv or json.'}, status=400)
-        
-#         # Get analytics data
-#         analytics_data = get_time_based_analytics_data(period, device_id)
-#         if analytics_data is None:
-#             return Response({'error': 'Invalid period specified'}, status=400)
-        
-#         # Generate filename
-#         timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
-#         filename = f"analytics_{period}_{timestamp}"
-        
-#         if format_type == 'csv':
-#             return generate_csv_response(analytics_data, filename)
-#         return generate_json_response(analytics_data, filename)
-            
-#     except Exception as e:
-#         logger.exception("Download analytics failed")
-#         return Response({'error': f'Server error: {str(e)}'}, status=500)
-
-# def generate_csv_response(analytics_data, filename):
-#     """Efficient CSV streaming with proper escaping"""
-#     def csv_data_generator():
-#         # Create buffer and CSV writer
-#         buffer = io.StringIO()
-#         writer = csv.writer(buffer, quoting=csv.QUOTE_NONNUMERIC)
-        
-#         # Write header row
-#         header = [
-#             'Device ID', 'Room', 'Floor', 'Device Name', 'Period',
-#             'Total Entries', 'Low Alerts', 'High Alerts',
-#             'Medium Alerts', 'Tamper Alerts'
-#         ]
-#         writer.writerow(header)
-#         yield buffer.getvalue()
-#         buffer.seek(0)
-#         buffer.truncate(0)
-        
-#         # Process device data
-#         for device in analytics_data.get('data', []):
-#             device_id = device.get('device_id', '')
-#             room = device.get('room', '')
-#             floor = device.get('floor', '')
-#             device_name = device.get('device_name', '')
-            
-#             periods = device.get('periods', [])
-#             if not periods:
-#                 # Handle devices with no data
-#                 row = [
-#                     device_id, room, floor, device_name, 'No data',
-#                     0, 0, 0, 0, 0
-#                 ]
-#                 writer.writerow(row)
-#                 yield buffer.getvalue()
-#                 buffer.seek(0)
-#                 buffer.truncate(0)
-#             else:
-#                 # Process each period
-#                 for period_data in periods:
-#                     row = [
-#                         device_id,
-#                         room,
-#                         floor,
-#                         device_name,
-#                         period_data.get('period_name', ''),
-#                         period_data.get('total_entries', 0),
-#                         period_data.get('low_alerts', 0),
-#                         period_data.get('high_alerts', 0),
-#                         period_data.get('medium_alerts', 0),
-#                         period_data.get('tamper_alerts', 0)
-#                     ]
-#                     writer.writerow(row)
-#                     yield buffer.getvalue()
-#                     buffer.seek(0)
-#                     buffer.truncate(0)
+    # Sort by status priority (critical first) and then by device name
+    distribution_data.sort(key=lambda x: (-x['current_status_priority'], x['device_name']))
     
-#     # Create streaming response
-#     response = StreamingHttpResponse(
-#         csv_data_generator(),
-#         content_type='text/csv; charset=utf-8'
-#     )
-#     response['Content-Disposition'] = f'attachment; filename="{filename}.csv"'
-#     response['Cache-Control'] = 'no-cache'
-#     return response
-
-# def generate_json_response(analytics_data, filename):
-#     """JSON response generation with proper encoding"""
-#     try:
-#         json_content = json.dumps(
-#             analytics_data,
-#             indent=2,
-#             ensure_ascii=False,
-#             default=str
-#         )
-#         response = HttpResponse(
-#             json_content,
-#             content_type='application/json; charset=utf-8'
-#         )
-#         response['Content-Disposition'] = f'attachment; filename="{filename}.json"'
-#         response['Cache-Control'] = 'no-cache'
-#         return response
-#     except Exception as e:
-#         logger.error(f"JSON generation failed: {str(e)}")
-#         return Response(
-#             {'error': 'Failed to generate JSON file'},
-#             status=500
-#         )
-
-
-# # Original analytics endpoint
-# @swagger_auto_schema(
-#     method='get',
-#     manual_parameters=[
-#         openapi.Parameter('period', openapi.IN_QUERY, description="Period: weekly, monthly, quarterly, yearly", type=openapi.TYPE_STRING),
-#         openapi.Parameter('device_id', openapi.IN_QUERY, description="Specific device ID (optional)", type=openapi.TYPE_INTEGER),
-#     ],
-#     responses={200: openapi.Response('Time-based analytics')},
-#     operation_description="Get analytics data for different time periods"
-# )
-# @api_view(['GET'])
-# @permission_classes([IsAuthenticated])
-# def time_based_analytics(request):
-#     period = request.GET.get('period', 'weekly')
-#     device_id = request.GET.get('device_id')
+    # Calculate overall statistics
+    total_devices = len(distribution_data)
+    active_devices = sum(1 for d in distribution_data if d['is_active'])
     
-#     analytics_data = get_time_based_analytics_data(period, device_id)
-#     if analytics_data is None:
-#         return Response({'error': 'Invalid period'}, status=400)
+    overall_stats = {
+        'total_devices': total_devices,
+        'active_devices': active_devices,
+        'inactive_devices': total_devices - active_devices,
+        'status_summary': {
+            'critical': sum(1 for d in distribution_data if d['current_status'] == 'critical'),
+            'tamper': sum(1 for d in distribution_data if d['current_status'] == 'tamper'),
+            'low': sum(1 for d in distribution_data if d['current_status'] == 'low'),
+            'medium': sum(1 for d in distribution_data if d['current_status'] == 'medium'),
+            'high': sum(1 for d in distribution_data if d['current_status'] == 'high'),
+            'normal': sum(1 for d in distribution_data if d['current_status'] == 'normal'),
+            'inactive': sum(1 for d in distribution_data if d['current_status'] == 'inactive')
+        }
+    }
     
-#     return Response(analytics_data)
+    return Response({
+        'overall_statistics': overall_stats,
+        'devices': distribution_data,
+        'generated_at': timezone.now()
+    })

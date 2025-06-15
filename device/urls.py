@@ -91,6 +91,7 @@ from .views.analytics_views import (
 
     summary_analytics,
     device_status_summary,
+    device_status_distribution,
 )
 
 urlpatterns = [
@@ -110,9 +111,7 @@ urlpatterns = [
     path('notifications/<int:pk>/mark-read/', mark_notification_as_read, name='mark_notification_as_read'),
     path('notifications/clear-all/', clear_all_notifications, name='clear_all_notifications'),
     path('notifications/unread-count/', get_unread_count, name='get_unread_count'),
-    path('expo-token/register/', register_push_token, name='register_push_token'),
-
-    # Analytics endpoints
+    path('expo-token/register/', register_push_token, name='register_push_token'),    # Analytics endpoints
     path('device-analytics/', advanced_analytics, name='advanced_analytics'),
     path('device-analytics/time-based/', time_based_analytics, name='time_based_analytics'),
     # path('device-analytics/download/', download_analytics, name='download_analytics'),
@@ -120,6 +119,7 @@ urlpatterns = [
     path('device-analytics/summary/', summary_analytics, name='summary_analytics'),
     path('device-analytics/realtime-status/', device_realtime_status, name='device_realtime_status'),
     path('device-analytics/status-summary/', device_status_summary, name='device_status_summary'),
+    path('device-analytics/status-distribution/', device_status_distribution, name='device_status_distribution'),
     
     # Device registration endpoints
     path('device/register/', register_device, name='register_device'),
